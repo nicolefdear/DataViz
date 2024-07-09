@@ -1,0 +1,504 @@
+---
+title: 'RV466/EID005: Magpix Data Report'
+author: "Nicole Dear"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# SET UP WORKSPACE -----
+
+# load packages
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(expss)
+library(ggpubr)
+library(stringr)
+library(tidyverse)
+library(table1)
+library(printr)
+library(flextable)
+library(knitr)
+# library(fmsb) # for radar (polar) charts
+# theme_set(theme_pubr())
+
+# set working directory
+setwd("G:/DCAC/DCAC_EIDB/EID005_RV466/Analysis/MagPix")
+
+# load magpix data (these come from Fauci, exported as excel)
+magpix <- read_excel("G:/DCAC/DCAC_EIDB/EID005_RV466/Analysis/MagPix/RV466_magpix_clean.xlsx")
+
+```
+
+
+### Description
+This report summarizes the RV466/EID005 Magpix (IgG) data.
+
+
+### Methods
+Descriptive methods were used to analyze Magpix IgG data, including frequencies and percentages for categorical variables. No statistical hypothesis testing was performed. A positive result was defined as a signal-to-noise ratio value >20.
+
+
+```{r include=FALSE}
+
+# DATA CLEANING -----
+
+# create variable for population (healthy controls [n=8] vs acutely ill)
+magpix$control <- ifelse(magpix$subj_id=="2019001"|magpix$subj_id=="2019002"|magpix$subj_id=="2019003"|
+                           magpix$subj_id=="2019004"|magpix$subj_id=="2019005"|magpix$subj_id=="2019006"|
+                           magpix$subj_id=="2019007"|magpix$subj_id=="2019008", 1, 0) 
+
+# create country variable
+magpix$country <- ifelse(grepl('10', substr(magpix$subj_id,1,3)),1,
+                         ifelse(grepl('20', substr(magpix$subj_id,1,3)),2,NA))
+
+# add labels
+magpix$control <- factor(magpix$control,
+                    levels = c(0,1),
+                    labels = c("Acutely ill", "Healthy controls"))
+
+magpix$country <- factor(magpix$country,
+                    levels = c(1,2),
+                    labels = c("Nigeria", "Ghana"))
+
+# check frequencies
+addmargins(table(magpix$country,magpix$control))
+
+# create flags (per Keersten Ricks and lab team, a S/N of >20 indicates a 'positive' result)
+magpix$RVFV_POS <- ifelse(magpix$RVFV>20, 1, 0)
+magpix$PANA_POS <- ifelse(magpix$Panalphavirus>20, 1, 0)
+magpix$PANF_POS <- ifelse(magpix$Panflavivirus>20, 1, 0)
+magpix$MARV_POS <- ifelse(magpix$MARV>20, 1, 0)
+magpix$EBOV_POS <- ifelse(magpix$EBOV>20, 1, 0)
+magpix$LASV_POS <- ifelse(magpix$LASV>20, 1, 0)
+magpix$CCHFV_POS <- ifelse(magpix$CCHFV>20, 1, 0)
+
+# write.csv(magpix, file = "magpix_flags.csv")
+
+```
+
+
+### Table 1. Percentage of participants with signal-to-noise ratio >20
+
+```{r echo=FALSE}
+
+# TABLE 1 -----
+
+magpix_table <- magpix
+
+magpix_table$RVFV_POS <- factor(magpix_table$RVFV_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+magpix_table$PANA_POS <- factor(magpix_table$PANA_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+magpix_table$PANF_POS <- factor(magpix_table$PANF_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+magpix_table$MARV_POS <- factor(magpix_table$MARV_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+magpix_table$EBOV_POS <- factor(magpix_table$EBOV_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+magpix_table$LASV_POS <- factor(magpix_table$LASV_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+magpix_table$CCHFV_POS <- factor(magpix_table$CCHFV_POS,
+                    levels = c(0,1),
+                    labels = c("Negative", "Positive"))
+
+label(magpix_table$RVFV_POS) <- "RVFV"
+label(magpix_table$PANA_POS) <- "Alphavirus spp."
+label(magpix_table$PANF_POS) <- "Flavivirus spp."
+label(magpix_table$MARV_POS) <- "MARV"
+label(magpix_table$EBOV_POS) <- "EBOV"
+label(magpix_table$LASV_POS) <- "LASV"
+label(magpix_table$CCHFV_POS) <- "CCHFV"
+
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+
+
+t1 <- table1(~ RVFV_POS + PANA_POS + PANF_POS + MARV_POS + EBOV_POS + LASV_POS + CCHFV_POS | 
+               country, data = magpix_table, overall=c(right="Total"), extra.col=list(`P-value`=pvalue))
+
+t1flex(t1)
+
+# reference
+# https://cran.r-project.org/web/packages/table1/vignettes/table1-examples.html
+
+```
+
+
+### Figure 1. Bar graph of pathogen positivity by country
+
+```{r echo=FALSE, warning = FALSE}
+
+# SUMMARIZE DATA IN BAR GRAPH -----
+
+# restructure data
+magpix_long <- gather(magpix, path, pos, RVFV_POS:CCHFV_POS, factor_key=TRUE)
+
+magpix_long_mod <- magpix_long %>%
+  mutate(pathogen = case_when(path=="RVFV_POS" ~ 1,
+                              path=="PANA_POS" ~ 2,
+                              path=="PANF_POS" ~ 3,
+                              path=="MARV_POS" ~ 4,
+                              path=="EBOV_POS" ~ 5,
+                              path=="LASV_POS" ~ 6,
+                              path=="CCHFV_POS" ~ 7))
+
+magpix_long_mod$pathogen <- factor(magpix_long_mod$pathogen,
+                                      levels = c(1,2,3,4,5,6,7),
+                                      labels = c("RVFV", "ALPHA", "FLAVI",
+                                                 "MARV", "EBOV", "LASV", "CCHFV"))
+
+# calculate counts of those positive for each pathogen
+pos <- magpix_long_mod %>%
+  group_by(country, pathogen) %>%
+  summarise(tot_pos = sum(pos), 
+            n = n())
+
+pos$percent <- round(100*(pos$tot_pos/pos$n),2)
+
+# create labels
+pos$label <- paste(pos$tot_pos, " (", round(pos$percent, digits = 1), "%)", sep = "")
+
+# create color palette
+#cpalette <- c("#375623","#ABA72B")
+cpalette <- c("black","darkgrey")
+
+# plot
+bar <- ggplot(pos, aes(x = pathogen, y = percent, fill=country)) +
+  geom_col(position="dodge") +
+  geom_text(aes(label = label), size = 4, position = position_dodge(width = 1.1), vjust = -0.6) +
+  scale_fill_manual(values = cpalette) +
+  theme_pubclean() +
+  xlab("Pathogen") +
+  ylab("Percent") +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title=element_text(size=16), 
+        legend.text=element_text(size=14)) +
+  guides(fill=guide_legend(title="Country")) +
+  lims(y = c(0, 100))
+  # + labs(caption = "Note: N=256 participants (n=154 in Nigeria and n=102 participants in Ghana) \n 
+  #      underwent Magpix testing for each pathogen", size = 18)
+
+png(file="RV466_Magpix_Fig1_gs.png", width=800, height=600)
+bar
+dev.off()
+
+```
+
+
+### Figure 2. Distribution of S/N values by pathogen and country (histogram)
+
+```{r echo=FALSE, warning = FALSE}
+
+# restructure S/N ratio data
+magpix_sn_long <- gather(magpix, path, sn_value, RVFV:CCHFV, factor_key=TRUE)
+
+magpix_sn_long_mod <- magpix_sn_long %>%
+  mutate(pathogen = case_when(path=="RVFV" ~ 1,
+                              path=="Panalphavirus" ~ 2,
+                              path=="Panflavivirus" ~ 3,
+                              path=="MARV" ~ 4,
+                              path=="EBOV" ~ 5,
+                              path=="LASV" ~ 6,
+                              path=="CCHFV" ~ 7))
+
+magpix_sn_long_mod$pathogen <- factor(magpix_sn_long_mod$pathogen,
+                                levels = c(1,2,3,4,5,6,7),
+                                labels = c("RVFV","Panalphavirus","Panflavivirus","MARV","EBOV","LASV","CCHFV"))
+
+# check ranges of S/N values
+t1 <- table1(~ RVFV + Panalphavirus + Panflavivirus + MARV + EBOV + LASV + CCHFV | 
+               country, data = magpix_table, overall=c(right="Total"))
+
+t1flex(t1)
+
+# histogram of S/N ratio values by pathogen type and country
+sn_hist <- gghistogram(magpix_sn_long_mod, x = "sn_value", binwidth = 8, 
+                       # rug = TRUE,
+                       color = "pathogen", fill = "pathogen",
+                       xlab = "S/N Ratio",
+                       ylab = "Count",
+                       title = "Distribution of S/N Values by Pathogen and Country") +
+  theme(legend.position="right", legend.box="vertical") +
+  theme(legend.title = element_blank()) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_vline(aes(xintercept = 20), col='red', linewidth=0.5, linetype=3) +
+  # annotate("text", x = 40, y = -10, label = "S/N>20", size=3) +  
+  labs(caption = "Note: The red dashed line indicates a S/N ratio value of 20; binwidth is 8 (n=32 bins).", 
+       size = 12) +
+  coord_cartesian(ylim = c(0, 140), clip = "off") +
+  facet_grid(country ~ .)
+
+#png(file="RV466_Magpix_Fig2.png", width=700, height=700)
+sn_hist
+#dev.off()
+```
+
+
+### Figure 3. Patterns of Pathogen Positivity
+
+```{r echo=FALSE}
+
+# create 'heatmap' of different positivity patterns
+
+magpix$RVFV_pos_c <- ifelse(magpix$RVFV>20, "RVFV", "")
+magpix$Panalphavirus_pos_c <- ifelse(magpix$Panalphavirus>20, "Panalphavirus", "")
+magpix$Panflavivirus_pos_c <- ifelse(magpix$Panflavivirus>20, "Panflavivirus", "")
+magpix$MARV_pos_c <- ifelse(magpix$MARV>20, "MARV", "")
+magpix$EBOV_pos_c <- ifelse(magpix$EBOV>20, "EBOV", "")
+magpix$LASV_pos_c <- ifelse(magpix$LASV>20, "LASV", "")
+magpix$CCHFV_pos_c <- ifelse(magpix$CCHFV>20, "CCHFV", "")
+
+magpix$pattern <- paste(magpix$RVFV_pos_c, magpix$Panalphavirus_pos_c, magpix$Panflavivirus_pos_c,
+                        magpix$MARV_pos_c, magpix$EBOV_pos_c, magpix$LASV_pos_c, magpix$CCHFV_pos_c, 
+                        sep = " ", collapse = NULL)
+
+# remove extra spaces between words
+magpix$pattern <- trimws(magpix$pattern)
+magpix$pattern <- gsub("\\s+"," ", magpix$pattern)
+
+mp <- as.data.frame(sort(table(magpix$pattern), decreasing=T))
+mp$tot <- 256
+mp$percent <- round(100*(mp$Freq/mp$tot), 2)
+
+mp$Var1[mp$Var1==""] <- NA
+print(mp)
+
+# write.csv(mp, file = "magpix_patterns.csv")
+
+
+# tree map
+library(treemap)
+
+# create labels
+mp$id <- 1:nrow(mp)
+
+mp$label[mp$id==1] <- "Panflavivirus"
+mp$label[mp$id==2] <- "None"
+mp$label[mp$id==3] <- "Panalphavirus, Panflavivirus"
+mp$label[mp$id==4] <- "RVFV, Panalphavirus, Panflavivirus"
+mp$label[mp$id==5] <- "Panalphavirus"
+mp$label[mp$id==6] <- "RVFV, Panflavivirus"
+mp$label[mp$id==7] <- "LASV"
+mp$label[mp$id==8] <- "Panalphavirus, Panflavivirus, EBOV"
+mp$label[mp$id==9] <- "Panalphavirus, Panflavivirus, LASV"
+mp$label[mp$id==10] <- "Panflavivirus, LASV"
+mp$label[mp$id==11] <- "Panalphavirus, Panflavivirus, CCHFV"
+mp$label[mp$id==12] <- "Panflavivirus, CCHFV"
+mp$label[mp$id==13] <- "CCHFV"
+mp$label[mp$id==14] <- "RVFV, Panflavivirus, LASV"
+mp$label[mp$id==15] <- "Panalphavirus, LASV"
+mp$label[mp$id==16] <- "Panflavivirus, EBOV"
+mp$label[mp$id==17] <- "Panflavivirus, MARV"
+mp$label[mp$id==18] <- "Panflavivirus, MARV, EBOV"
+mp$label[mp$id==19] <- "RVFV, Panalphavirus, Panflavivirus, EBOV"
+mp$label[mp$id==20] <- "RVFV, Panalphavirus, Panflavivirus, EBOV, CCHFV"
+mp$label[mp$id==21] <- "RVFV, Panalphavirus, Panflavivirus, LASV"
+mp$label[mp$id==22] <- "RVFV, Panflavivirus, EBOV"
+mp$label[mp$id==23] <- "RVFV, Panflavivirus, EBOV, LASV, CCHFV"
+
+# keep only patterns with at least 2 pathogens detected
+mp2 <- mp[c(3:4,6,8:12,14:23),]
+
+# keep top 10
+top10 <- mp2[c(1:10),]
+
+top10$label2 <- paste(top10$label, ": ", top10$Freq, " (", round(top10$percent, digits = 1), "%)", sep = "")
+
+treemap(top10,
+            index="label2",
+            vSize="Freq",
+            type="index",
+            title=" ",
+            fontsize.labels = 10)
+
+
+# circle packing
+library(packcircles)
+library(viridis)
+
+# Generate the layout. This function return a dataframe with one line per bubble. 
+# It gives its center (x and y) and its radius, proportional of the value
+packing <- circleProgressiveLayout(top10$Freq, sizetype='area')
+
+# We can add these packing information to the initial data frame
+top10 <- cbind(top10, packing)
+ 
+# Check that radius is proportional to value. We don't want a linear relationship, since it is the AREA that must be proportionnal to the value
+plot(top10$radius, top10$Freq)
+ 
+# The next step is to go from one center + a radius to the coordinates of a circle that
+# is drawn by a multitude of straight lines.
+dat.gg <- circleLayoutVertices(packing, npoints=50)
+ 
+# Make the plot
+bubbles <- ggplot() + 
+  geom_polygon(data = dat.gg, aes(x, y, group = id, fill=as.factor(id)), colour = "black", alpha = 0.6) +
+  scale_fill_manual(values = magma(nrow(top10))) +
+  geom_text(data = top10, aes(x, y, size=Freq, label = label)) +
+  scale_size_continuous(range = c(1,4)) +
+  theme_void() + 
+  theme(legend.position="none") +
+  coord_equal()
+
+#png(file="RV466_Magpix_Fig3.png", width=800, height=600)
+bubbles
+#dev.off()
+
+```
+
+
+```{r echo=FALSE}
+
+# DATA WRANGLING FOR MAPS -----
+# DISTRICT LEVEL
+
+# load data
+mp_geo <- read_excel("G:/DCAC/DCAC_EIDB/EID005_RV466/Analysis/MagPix/magpix_flags.xlsx")
+
+mp_geo_g <- mp_geo %>% subset(country=="Ghana")
+mp_geo_n <- mp_geo %>% subset(country=="Nigeria")
+
+# create summary measures for Ghana
+mp_geo_g_summary <- mp_geo_g %>%
+  group_by(ID) %>%
+  summarise(RVFV_POS_TOT = sum(RVFV_POS),
+            PANA_POS_TOT = sum(PANA_POS),
+            PANF_POS_TOT = sum(PANF_POS),
+            MARV_POS_TOT = sum(MARV_POS),
+            EBOV_POS_TOT = sum(EBOV_POS),
+            LASV_POS_TOT = sum(LASV_POS),
+            CCHFV_POS_TOT = sum(CCHFV_POS),
+            n = n())
+
+mp_geo_g_summary$RVFV_POS_PROP <- mp_geo_g_summary$RVFV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$PANA_POS_PROP <- mp_geo_g_summary$PANA_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$PANF_POS_PROP <- mp_geo_g_summary$PANF_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$MARV_POS_PROP <- mp_geo_g_summary$MARV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$EBOV_POS_PROP <- mp_geo_g_summary$EBOV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$LASV_POS_PROP <- mp_geo_g_summary$LASV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$CCHFV_POS_PROP <- mp_geo_g_summary$CCHFV_POS_TOT/mp_geo_g_summary$n
+
+write.csv(mp_geo_g_summary, file = "magpix_geo_ghana_summary.csv")
+
+# create summary measures for Nigeria
+mp_geo_n_summary <- mp_geo_n %>%
+  group_by(ID) %>%
+  summarise(RVFV_POS_TOT = sum(RVFV_POS),
+            PANA_POS_TOT = sum(PANA_POS),
+            PANF_POS_TOT = sum(PANF_POS),
+            MARV_POS_TOT = sum(MARV_POS),
+            EBOV_POS_TOT = sum(EBOV_POS),
+            LASV_POS_TOT = sum(LASV_POS),
+            CCHFV_POS_TOT = sum(CCHFV_POS),
+            n = n())
+
+mp_geo_n_summary$RVFV_POS_PROP <- mp_geo_n_summary$RVFV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$PANA_POS_PROP <- mp_geo_n_summary$PANA_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$PANF_POS_PROP <- mp_geo_n_summary$PANF_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$MARV_POS_PROP <- mp_geo_n_summary$MARV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$EBOV_POS_PROP <- mp_geo_n_summary$EBOV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$LASV_POS_PROP <- mp_geo_n_summary$LASV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$CCHFV_POS_PROP <- mp_geo_n_summary$CCHFV_POS_TOT/mp_geo_n_summary$n
+
+write.csv(mp_geo_n_summary, file = "magpix_geo_nigeria_summary.csv")
+```
+
+
+```{r echo=FALSE}
+
+# DATA WRANGLING FOR MAPS -----
+# REGIONAL LEVEL
+
+# load data
+mp_geo <- read_excel("G:/DCAC/DCAC_EIDB/EID005_RV466/Analysis/MagPix/magpix_flags.xlsx")
+
+# manual corrections of region names
+mp_geo$region[mp_geo$region=="BENUE"] <- "Benue"
+mp_geo$region[mp_geo$region=="Lagos state"] <- "Lagos"
+mp_geo$region[mp_geo$region=="Lagos State"] <- "Lagos"
+mp_geo$region[mp_geo$region=="Nigeria"] <- "Niger"
+
+# split into two separate data sets, one for each country
+mp_geo_g <- mp_geo %>% subset(country=="Ghana")
+mp_geo_n <- mp_geo %>% subset(country=="Nigeria")
+
+# create summary measures for Ghana
+mp_geo_g_summary <- mp_geo_g %>%
+  group_by(region) %>%
+  summarise(RVFV_POS_TOT = sum(RVFV_POS),
+            PANA_POS_TOT = sum(PANA_POS),
+            PANF_POS_TOT = sum(PANF_POS),
+            MARV_POS_TOT = sum(MARV_POS),
+            EBOV_POS_TOT = sum(EBOV_POS),
+            LASV_POS_TOT = sum(LASV_POS),
+            CCHFV_POS_TOT = sum(CCHFV_POS),
+            n = n())
+
+mp_geo_g_summary$RVFV_POS_PROP <- mp_geo_g_summary$RVFV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$PANA_POS_PROP <- mp_geo_g_summary$PANA_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$PANF_POS_PROP <- mp_geo_g_summary$PANF_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$MARV_POS_PROP <- mp_geo_g_summary$MARV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$EBOV_POS_PROP <- mp_geo_g_summary$EBOV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$LASV_POS_PROP <- mp_geo_g_summary$LASV_POS_TOT/mp_geo_g_summary$n
+mp_geo_g_summary$CCHFV_POS_PROP <- mp_geo_g_summary$CCHFV_POS_TOT/mp_geo_g_summary$n
+
+write.csv(mp_geo_g_summary, file = "magpix_geo_ghana_regional_summary.csv")
+
+# create summary measures for Nigeria
+mp_geo_n_summary <- mp_geo_n %>%
+  group_by(region) %>%
+  summarise(RVFV_POS_TOT = sum(RVFV_POS),
+            PANA_POS_TOT = sum(PANA_POS),
+            PANF_POS_TOT = sum(PANF_POS),
+            MARV_POS_TOT = sum(MARV_POS),
+            EBOV_POS_TOT = sum(EBOV_POS),
+            LASV_POS_TOT = sum(LASV_POS),
+            CCHFV_POS_TOT = sum(CCHFV_POS),
+            n = n())
+
+mp_geo_n_summary$RVFV_POS_PROP <- mp_geo_n_summary$RVFV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$PANA_POS_PROP <- mp_geo_n_summary$PANA_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$PANF_POS_PROP <- mp_geo_n_summary$PANF_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$MARV_POS_PROP <- mp_geo_n_summary$MARV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$EBOV_POS_PROP <- mp_geo_n_summary$EBOV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$LASV_POS_PROP <- mp_geo_n_summary$LASV_POS_TOT/mp_geo_n_summary$n
+mp_geo_n_summary$CCHFV_POS_PROP <- mp_geo_n_summary$CCHFV_POS_TOT/mp_geo_n_summary$n
+
+write.csv(mp_geo_n_summary, file = "magpix_geo_nigeria_regional_summary.csv")
+
+```
